@@ -38,6 +38,11 @@ void matmul_gpu(const float* h_A, const float* h_B, float* h_C, int M, int K, in
     size_t size_B = K * N * sizeof(float);
     size_t size_C = M * N * sizeof(float);
     
+    std::cout << "GPU matmul_gpu enter!" << std::endl;
+    // 1. 预热 (Warm-up)
+    // 随便调个 API，强制 GPU 完成初始化，避免把启动时间算进测试里
+    cudaFree(0); 
+
     // 分配 GPU 内存
     cudaMalloc(&d_A, size_A);
     cudaMalloc(&d_B, size_B);
@@ -51,12 +56,22 @@ void matmul_gpu(const float* h_A, const float* h_B, float* h_C, int M, int K, in
     dim3 threadsPerBlock(16, 16);  // 每个 block 256 线程
     dim3 numBlocks((N + 15) / 16, (M + 15) / 16);
     
+    // ========== GPU 核心计算阶段 (只计这一段!) ==========
+    cudaDeviceSynchronize(); // 确保上面都做完了
+    auto start_kernel = std::chrono::high_resolution_clock::now();
+
     // 启动 Kernel
     matmul_kernel<<<numBlocks, threadsPerBlock>>>(d_A, d_B, d_C, M, K, N);
     
     // 等待 GPU 完成
     cudaDeviceSynchronize();
     
+    auto end_kernel = std::chrono::high_resolution_clock::now();
+
+        // 计算耗时
+    auto kernel_time = std::chrono::duration_cast<std::chrono::microseconds>(end_kernel - start_kernel).count();
+    std::cout << "GPU Kernel 纯计算耗时: " << kernel_time / 1000.0 << " ms" << std::endl;
+
     // 结果拷贝：GPU → CPU
     cudaMemcpy(h_C, d_C, size_C, cudaMemcpyDeviceToHost);
     
@@ -95,9 +110,9 @@ int main() {
     
     std::cout << "\n=== CUDA 首战告捷 ===" << std::endl;
     std::cout << "CPU 耗时: " << cpu_time << " ms" << std::endl;
-    std::cout << "GPU 耗时: " << gpu_time << " ms" << std::endl;
-    std::cout << "加速比: " << (double)cpu_time / gpu_time << " 倍" << std::endl;
-    std::cout << "最大误差: " << max_error << std::endl;
+    //std::cout << "GPU 耗时: " << gpu_time << " ms" << std::endl;
+    //std::cout << "加速比: " << (double)cpu_time / gpu_time << " 倍" << std::endl;
+    //std::cout << "最大误差: " << max_error << std::endl;
     
     return 0;
 }
